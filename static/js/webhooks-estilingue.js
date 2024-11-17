@@ -1,4 +1,4 @@
-import {dragBall} from "./estilingue.js"
+import {dragBall, lockModal} from "./estilingue.js"
 //region Camera Worker
 const CameraworkerCode = `
     self.onmessage = function(event) {
@@ -38,18 +38,28 @@ const CameraworkerCode = `
     };
 `;
 
+let lastangle = 0;
 
+export function resetLastAngle(){
+  lastangle = 0;
+}
 // Create a blob URL for the worker
 const blob = new Blob([CameraworkerCode], { type: 'application/javascript' });
 const worker = new Worker(URL.createObjectURL(blob));
 worker.postMessage('Start');
 worker.onmessage = function(event) {
-    if (event.data.type === 'movement') {
+    if (event.data.type === 'movement' && document.getElementById("gameScreen").style.display == "block") {
         let displacement = event.data.data;
-        let percentMoved = displacement.angle/180 
+        lockModal(displacement.angle);
+        if (Math.abs(displacement.angle - lastangle) > 5) {
+        let percentMoved = (displacement.angle - lastangle)/180 
+        lastangle = displacement.angle;
+        if (window.isinanchor) lastangle = 0;
         dragBall(percentMoved);
+        }
         let admindata = JSON.stringify(
           { data:{
+              game: 'bird',
               type: "movement",
               displacement: displacement
           }
@@ -63,10 +73,6 @@ worker.onmessage = function(event) {
     }
 };
 
-// Function to send messages to the server through the worker
-function sendToServer(message) {
-    worker.postMessage({ type: 'sendMessage', message: message });
-}
 //endregion
 
 //region Sensor Worker
@@ -165,9 +171,6 @@ export function sendData(dataBatch) {
     adminWorker.postMessage({ type: 'sendData', payload: { dataBatch: dataBatch } });
 }
 
-// Listen for messages from the Web adminWorker
-adminWorker.onmessage = function(event) {
-};
 
 // Example usage:
 openWebSocket('ws://localhost:5000');  // Replace with your WebSocket URL

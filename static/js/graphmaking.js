@@ -1,6 +1,6 @@
  // Initialize the Dygraph with empty data
 
-const g = new Dygraph(
+const plantGraph = new Dygraph(
     document.getElementById("chart1"),
     [], // Initial empty dataset
     {
@@ -14,8 +14,34 @@ const g = new Dygraph(
       pointSize: 4,
       showRoller: false,
       legend: "always",
+
     }
   );
+  const angleGraph = new Dygraph(
+    document.getElementById("chart2"),
+    [], // Initial empty dataset
+    {
+      title: "Real-time Accelerometer Data",
+      labels: ["Elapsed Time (s)", "X-axis", "Y-axis", "Z-axis"],
+      ylabel: "Acceleration (m/s²)",
+      xlabel: "Time (seconds)",
+      colors: ["#FF6F61", "#6ABF69", "#6A9FF2"],
+      strokeWidth: 2.5,
+      drawPoints: true,
+      pointSize: 4,
+      showRoller: false,
+      legend: "always",
+
+    }
+  );
+
+  $(document).on( 'shown.bs.tab', function (e) {
+    plantGraph.resize(); // resize the dygraph
+  });
+  $(document).on( 'shown.bs.tab', function (e) {
+    angleGraph.resize(); // resize the dygraph
+  });
+
 let dataBuffer = [];
   
   // Inline web worker creation
@@ -96,19 +122,14 @@ let dataBuffer = [];
 
       dataBuffer.shift();
     }
-
-    function checkThresholds(averages) {
-      if (averages.x > 10 || averages.y > 10 || averages.z > 10) {
-        alert("Threshold exceeded");
-      }
-    }
   
+    }
     // Update the Dygraph with the new data
-    g.updateOptions({
-      file: dataBuffer,
-    });
-  };
 
+  function toggleGraph(graph, enable){
+     if (enable) graph.updateOptions({ file: dataBuffer });
+     else graph.updateOptions({ file: null });
+  } 
 
   function ExportGraph() {
 

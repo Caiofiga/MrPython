@@ -1,37 +1,68 @@
-// Get the canvas and context
+//Dinamica de projeteis eh uma bosta, e o cara que inventou isso devia ser preso.
+
+// Dynamically import the module after the current module is loaded
+let resetLastAngle;
+let sendData;
+(async () => {
+    resetLastAngle = (await import("./webhooks-estilingue.js")).resetLastAngle;
+    sendData = (await import("./webhooks-estilingue.js")).sendData;
+})();
+
+
+
+import 'https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha3/dist/js/bootstrap.bundle.min.js';
+  // Get the canvas and context
 const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 
+
+let level = 0;
+
+
+let anchors = [
+    { x: 150, y: 800 },
+    { x: 300, y: 800 },
+    { x: 450, y: 800 }
+];
+
+
 // Game variables
 let ball = {
-    x: 150,
-    y: 450,
+    x: anchors[level].x,
+    y:anchors[level].y,
     radius: 20,
     vx: 0,
     vy: 0,
     isDragging: false,
-    isLaunched: false
+    isLaunched: false,
+    visible: true
 };
 
-let anchor = {
-    x: 150,
-    y: 450
-};
 
-let isLaunched = false;
-let gravity = 0.5;
-let friction = 0.99;
-
-// Event listeners for mouse interaction
-canvas.addEventListener('mousedown', releaseBall);
-//canvas.addEventListener('mousemove', dragBall)
-//canvas.addEventListener('mouseup', releaseBall)
-
-
+let distances = [100,125,50]; // Set distance away from the anchors at a 45 degree angle
 const angle = Math.PI/4
-const max_distx = 100
-const max_disty = Math.tan(angle) * max_distx
-const max_dist = Math.sqrt(max_distx ** 2 + max_disty ** 2)
+
+let objectives = anchors.map((anchor, index) => ({
+    x: anchor.x - distances[index] * Math.cos(Math.PI / 4),
+    y: anchor.y + distances[index] * Math.sin(Math.PI / 4)
+}));
+
+
+
+let obj_marker = {
+    x: objectives[level].x,
+    y: objectives[level].y,
+    radius: 10
+}
+
+
+
+let anchor = anchors[level];
+let isLaunched = false;
+
+let max_dist = distances[level] + 100; //buffer to solidfy reaching the objective
+let max_distx = max_dist * Math.cos(Math.PI / 4);
+let max_disty = max_dist * Math.sin(Math.PI / 4);
 
 export function dragBall(x ) {
     let dist_x = Math.abs(ball.x) - anchor.x;
@@ -41,18 +72,52 @@ export function dragBall(x ) {
         ball.x += -x * max_distx
         ball.y += Math.tan(angle) * x * max_disty
     }
+    if (dist <= 1) window.isinanchor = true;
+    else window.isinanchor = false;
+    
 }
 
-
+let parabola = null;
+let anchorpath = null;
+let anchorlaunchtime = 0;
+let parabolalaunchtime = 0;
 function releaseBall(e) {
     if (!ball.isLaunched) {
         ball.isDragging = false;
         isLaunched = true;
         ball.isLaunched = true;
         // Calculate launch velocity based on pull-back distance
-        ball.vx = (anchor.x - ball.x) * 0.1;
-        ball.vy = (anchor.y - ball.y) * 0.1;
+        anchorpath = calculateBallToAnchorPath(ball.x, ball.y, anchor.x, anchor.y)
+        anchorlaunchtime = performance.now()
+
     }
+}
+
+function calculateParabolicArc(startX, startY, endX, endY) {
+    // Calculate the midpoint between the start and end points
+    let midX = (startX + endX) / 2;
+    // Set the midY (vertex) above the start and end Y positions
+    let midY = Math.min(startY, endY) - 100;  // You can adjust the 100 to control the height of the arc
+
+    return function(t) {
+        let x = (1 - t) * (1 - t) * startX + 2 * (1 - t) * t * midX + t * t * endX;
+        let y = (1 - t) * (1 - t) * startY + 2 * (1 - t) * t * midY + t * t * endY;
+
+        return { x, y };
+    };
+}
+
+
+
+function calculateBallToAnchorPath(startX, startY, anchorX, anchorY) {
+
+    // Now we need to ensure the path passes through the start and anchor points
+    return function(t) {
+        // t is between 0 and 1
+        let x = (1 - t) * startX + t * anchorX;
+        let y = (1 - t) * startY + t * anchorY;
+        return { x, y };
+    };
 }
 
 
@@ -109,10 +174,14 @@ class Obstacle {
                     collisionY = this.y + this.height;
                 }
 
+
                 // Play the collision GIF at the exact collision point
+                const rect = canvas.getBoundingClientRect(); //margins were interfering, need to get the clientrect()
+                const x = rect.left + this.x + this.width / 2;
+                const y = rect.top + this.y + this.height / 2;
                 obstacles.pop(ball)
-                
-                playCollisionGif(this.x +this.width/2, this.y + this.height/2);
+                console.log(this.x + " " + this.y)
+                playCollisionGif(x, y);
             }
         }
     }
@@ -120,6 +189,7 @@ class Obstacle {
 
 function playCollisionGif(x, y) {
     const gif = document.getElementById('collisionGif');
+    ball.visible = false;
 
     // Reset the src to restart the GIF animation
     gif.src = gif.src;
@@ -132,13 +202,99 @@ function playCollisionGif(x, y) {
     // Hide the gif after 1.5 seconds
     setTimeout(() => {
         gif.style.display = 'none';
+        handleGameWin()
     }, 1500);
 }
 
-// Rest of the game logic...
+function handleNextLevel(){
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    level ++;
+    isLaunched = false;
+    if (level >= anchors.length) {
+        level = 0;
+    }
+    anchor = anchors[level];
+    ball = {
+        x: anchor.x,
+        y: anchor.y,
+        radius: 20,
+        vx: 0,
+        vy: 0,
+        isDragging: false,
+        isLaunched: false,
+        visible: true
+    };
+    obj_marker = {
+        x: objectives[level].x,
+        y: objectives[level].y,
+        radius: 10
+    }
+    obj_timer = 3.0;
+    
+    addObstacle(levelobstacles[level].x, levelobstacles[level].y, levelobstacles[level].w, levelobstacles[level].h)
+    parabola = null;
+    anchorpath = null;
+    anchorlaunchtime = 0;
+    anchorflightime = 0;
+    parabolalaunchtime = 0;
+    parabolaflighttime = 0;
+    reachedObstacle = false;
+    max_dist = distances[level] + 100;
+    max_distx = max_dist * Math.cos(Math.PI / 4);
+    max_disty = max_dist * Math.sin(Math.PI / 4);
+    playing = true;
+    
 
 
-let obstacles = [];
+}
+
+function handleGameWin(){
+    playing = false;
+    let data = JSON.stringify(
+        { data:{
+            type: 'bird',
+            level: level,
+            completed: level >= (anchors.length -1),
+            time: gametime
+        }
+        }
+    )
+    sendData(data)
+    gametime = 0;
+    const myModal = new bootstrap.Modal(document.getElementById('exampleModal'));
+    myModal.show();
+    myModal._element.addEventListener('hidden.bs.modal', handleNextLevel);
+    setTimeout(() => {
+        startFireworks(document.getElementById('modal-text'));
+        StartConfetti();
+    }, 4500);
+
+
+}
+
+export function lockModal(angle) {
+    const closemodalbutton = document.getElementById('closemodalbutton');
+    const modaltext = document.getElementById('lowerangle');
+
+    // Update the locked state based on the angle
+    if (angle > 20) {
+        closemodalbutton.disabled = true;
+        modaltext.style.visibility = 'inherit';
+
+    } else {
+        closemodalbutton.disabled = false;
+        modaltext.style.visibility = 'hidden';
+    }
+}
+
+let obstacles = []
+
+let levelobstacles = [
+{x: 1280, y: 500, w: 50, h: 50},
+{x: 900, y: 100, w: 50, h: 50},
+{x: 800, y: 50, w: 50, h: 50}
+];
+
 
 function drawObstacles() {
     for (let obstacle of obstacles) {
@@ -147,29 +303,38 @@ function drawObstacles() {
     }
 }
 
-function addObstacle() {
-    let obstacle = new Obstacle(600, canvas.height - 50, 50, 50);
+function addObstacle(x,y,w,h) {
+    let obstacle = new Obstacle(x, canvas.height - y, w, h);
     obstacles.push(obstacle);
 }
-addObstacle()
+addObstacle(levelobstacles[level].x, levelobstacles[level].y, levelobstacles[level].w, levelobstacles[level].h)
 
-// Utility functions
-function getMousePos(canvas, evt) {
-    const rect = canvas.getBoundingClientRect();
-    return {
-        x: evt.clientX - rect.left,
-        y: evt.clientY - rect.top
-    };
+function isBallInObjective(ball, obj_marker) {
+    const dx = ball.x - obj_marker.x;
+    const dy = ball.y - obj_marker.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    return distance <= ball.radius + obj_marker.radius;
 }
 
-function isInsideBall(pos, ball) {
-    const dx = pos.x - ball.x;
-    const dy = pos.y - ball.y;
-    return Math.sqrt(dx * dx + dy * dy) < ball.radius;
-}
+let obj_timer = 3.0;
 
-// Main animation loop
+let lastframetime = performance.now()
+let totalframetime = 0;
+let anchorflightime = 0
+let parabolaflighttime = 0;
+let parabolatime = 4000;
+let anchortime = 1000;
+let playing = false;
+let gametime = 0;
+
+//preciso somar os frametimes ate dar 1/60, ai eu rodo a fisica
 function animate() {
+    let deltaTime = performance.now() - lastframetime;
+    lastframetime = performance.now(); // Update the last frame time
+
+    if (playing) gametime += deltaTime;
+
+
     // Clear the canvas
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -178,43 +343,127 @@ function animate() {
         ctx.beginPath();
         ctx.moveTo(anchor.x, anchor.y);
         ctx.lineTo(ball.x, ball.y);
-        ctx.strokeStyle = 'gray';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'brown';
+        ctx.lineWidth = 4;
         ctx.stroke();
     }
 
-    // Update ball position if launched
-    if (isLaunched && !ball.isDragging) {
-        ball.vy += gravity; // Apply gravity
-        ball.vx *= friction; // Apply friction
-        ball.vy *= friction;
-        ball.x += ball.vx;
-        ball.y += ball.vy;
+    // Draw the slingshot itself
+    let slingshotImage = new Image();
+    slingshotImage.src = '../static/img/slingshot.png';
 
-        // Collision detection with ground
-        if (ball.y + ball.radius > canvas.height) {
-            ball.y = canvas.height - ball.radius;
-            ball.vy *= -1; // Reverse velocity (bounce)
-        }
+    // Calculate the required scale to fit the anchor
+    let slingshotHeight = 987; // Set the original height of the slingshot image
+    let distanceToAnchor = Math.abs(anchor.y - canvas.height); // Distance from the anchor to the floor
+    let scale = distanceToAnchor / slingshotHeight;
 
-        // Collision detection with walls
-        if (ball.x - ball.radius < 0 || ball.x + ball.radius > canvas.width) {
-            ball.vx *= -1; // Reverse velocity
-        }
+
+    // Save the context state
+    ctx.save();
+
+    // Move to the anchor point and rotate
+    ctx.translate(anchor.x, anchor.y);
+
+
+    // Draw the scaled slingshot image with the base aligned
+    let scaledWidth = slingshotImage.width * scale;
+    let scaledHeight = slingshotImage.height * scale;
+
+    ctx.drawImage(
+        slingshotImage, 
+        -scaledWidth / 2, // Center the image horizontally
+        -scaledHeight /10,    // Position the base at the anchor point
+        scaledWidth, 
+        scaledHeight
+    );
+
+    // Restore the context state
+    ctx.restore();
+
+    // Accumulate frame time and update physics at 60 FPS
+    totalframetime += deltaTime;
+    while (totalframetime >= (1000 / 60)) { // Update physics if enough time has passed
+        updatePhysics();
+        totalframetime -= (1000 / 60); // Decrease the accumulated time by the amount needed for the next physics update
     }
 
-    let ballImage = new Image()
-    ballImage.src = '../static/img/ball.png'
+    if (ball.visible){ //only draw the ball if it is visible
+    let ballImage = new Image();
+    ballImage.src = '../static/img/ball.png';
     // Draw the ball
     ctx.drawImage(ballImage, ball.x - ball.radius, ball.y - ball.radius, ball.radius * 2, ball.radius * 2);
+    // Draw the objective marker
+    ctx.beginPath();
+    ctx.arc(obj_marker.x, obj_marker.y, obj_marker.radius, 0, Math.PI * 2);
+    ctx.strokeStyle = 'red';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    }
 
     // Draw obstacles (for collision detection)
     drawObstacles();
 
+    if (isBallInObjective(ball, obj_marker)) {
+        obj_timer -= 0.01
+        console.log("counting Down!")
+        if (obj_timer <= 0) {
+            resetLastAngle();
+            releaseBall();
+        }
+    }
     // Request the next frame
     requestAnimationFrame(animate);
 }
 
+let reachedObstacle = false;
+//essa funcao soh vai rodar a cada 1/60 segs
+function updatePhysics(){
 
-// Start the animation
-animate();
+    if (isLaunched && parabola ==  null && !reachedObstacle){ //means the ball is still going to the anchor point
+        anchorflightime += (performance.now() - anchorlaunchtime);
+        let t = anchorflightime/anchortime;
+        ball.x = anchorpath(t).x;
+        ball.y = anchorpath(t).y;
+        if (t >= 1) 
+         {
+            parabola = calculateParabolicArc(ball.x, ball.y, obstacles[0].x, obstacles[0].y);
+            parabolalaunchtime = performance.now();
+         }
+    }
+
+    else if (isLaunched && parabola != null && !reachedObstacle) {
+        parabolaflighttime += (performance.now() - parabolalaunchtime);
+        let t = parabolaflighttime / parabolatime;
+        ball.x = parabola(t).x;
+        ball.y = parabola(t).y;
+        if (t >= 1) reachedObstacle = true;
+    }
+
+    
+
+    // Collision detection with ground
+    if (ball.y + ball.radius > canvas.height) {
+        ball.y = canvas.height - ball.radius;
+        ball.vy *= -1; // Reverse velocity (bounce)
+    }
+
+    // Collision detection with walls
+    if (ball.x - ball.radius < 0 || ball.x + ball.radius > canvas.width) {
+        ball.vx *= -1; // Reverse velocity
+    }
+}
+
+document.getElementById("startButton").addEventListener("click", () => {
+    animate();
+    let data = JSON.stringify(
+        { data:{
+            type: 'start',
+            game: 'game_2'
+        }
+        }
+    )
+    sendData(data);
+    document.getElementById("startScreen").style.display = "none";
+    document.getElementById("gameScreen").style.display = "block";
+    playing = true;
+  });
