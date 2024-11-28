@@ -1,148 +1,210 @@
- // Initialize the Dygraph with empty data
+// Initialize the Dygraph with empty data
 
 const plantGraph = new Dygraph(
-    document.getElementById("chart1"),
-    [], // Initial empty dataset
-    {
-      title: "Real-time Accelerometer Data",
-      labels: ["Elapsed Time (s)", "X-axis", "Y-axis", "Z-axis"],
-      ylabel: "Acceleration (m/s²)",
-      xlabel: "Time (seconds)",
-      colors: ["#FF6F61", "#6ABF69", "#6A9FF2"],
-      strokeWidth: 2.5,
-      drawPoints: true,
-      pointSize: 4,
-      showRoller: false,
-      legend: "always",
+  document.getElementById("chart1"),
+  [], // Initial empty dataset
+  {
+    title: "Real-time Accelerometer Data",
+    labels: ["Elapsed Time (s)", "X-axis", "Y-axis", "Z-axis"],
+    ylabel: "Acceleration (m/s²)",
+    xlabel: "Time (seconds)",
+    colors: ["#FF6F61", "#6ABF69", "#6A9FF2"],
+    strokeWidth: 2.5,
+    drawPoints: true,
+    pointSize: 4,
+    showRoller: false,
+    legend: "always",
+  }
+);
+const angleGraph = new Dygraph(
+  document.getElementById("chart2"),
+  [], // Initial empty dataset
+  {
+    title: "Real-time Accelerometer Data",
+    labels: ["Elapsed Time (s)", "X-axis", "Y-axis", "Z-axis"],
+    ylabel: "Acceleration (m/s²)",
+    xlabel: "Time (seconds)",
+    colors: ["#FF6F61", "#6ABF69", "#6A9FF2"],
+    strokeWidth: 2.5,
+    drawPoints: true,
+    pointSize: 4,
+    showRoller: false,
+    legend: "always",
+  }
+);
 
-    }
-  );
-  const angleGraph = new Dygraph(
-    document.getElementById("chart2"),
-    [], // Initial empty dataset
-    {
-      title: "Real-time Accelerometer Data",
-      labels: ["Elapsed Time (s)", "X-axis", "Y-axis", "Z-axis"],
-      ylabel: "Acceleration (m/s²)",
-      xlabel: "Time (seconds)",
-      colors: ["#FF6F61", "#6ABF69", "#6A9FF2"],
-      strokeWidth: 2.5,
-      drawPoints: true,
-      pointSize: 4,
-      showRoller: false,
-      legend: "always",
-
-    }
-  );
-
-  $(document).on( 'shown.bs.tab', function (e) {
-    plantGraph.resize(); // resize the dygraph
-  });
-  $(document).on( 'shown.bs.tab', function (e) {
-    angleGraph.resize(); // resize the dygraph
-  });
+$(document).on("shown.bs.tab", function (e) {
+  plantGraph.resize(); // resize the dygraph
+});
+$(document).on("shown.bs.tab", function (e) {
+  angleGraph.resize(); // resize the dygraph
+});
 
 let dataBuffer = [];
-  
-  // Inline web worker creation
-  const sensorWorkerCode = `
+let permabuffer = [];
+
+// Inline web worker creation
+const sensorWorkerCode = `
+    let socket;
     onmessage = function (e) {
-      let starttime = 0;
-      console.log("sensor Worker started and ready to connect");
-  
-      const socket = new WebSocket(
-        "ws://192.168.68.21:8765/"
-      );
-  
-      socket.onopen = function (e) {
-        console.log("WebSocket connected in sensor worker");
-      };
-  
-      socket.onerror = function (e) {
-        console.log("WebSocket error in sensor worker:", e);
-      };
-  
-      socket.onmessage = function (event) {
-        let message = JSON.parse(event.data);
-        let data = message.accel; // [x, y, z] values
-        let timestamp = message.timestamp;
-  
-        if (starttime === 0) {
-          starttime = timestamp;
+      if (e.data.type === "start") {
+        let starttime = 0;
+        console.log("sensor Worker started and ready to connect");
+
+      // Ensure the URL is a full WebSocket URL
+      let wsUrl;
+      try {
+        let url = e.data.url;
+        if (!url.startsWith('ws://') && !url.startsWith('wss://')) {
+          url = 'ws://' + url;
         }
-  
-        // Calculate elapsed time in seconds
-        let elapsedTime = timestamp
-        let workerresponse = { timestamp: elapsedTime, x: data[0], y: data[1], z: data[2] };
+        if (!url.endsWith('/ws')) {
+          url += '/ws';
+        }
+        wsUrl = new URL(url);
+      } catch (error) {
+        console.error("Invalid URL provided:", e.data.url);
+        return;
+      }
+      wsUrl = "ws://192.168.50.50:8080/sensor/connect?type=android.sensor.accelerometer"
+      socket = new WebSocket(wsUrl.toString());
+
+        socket.onopen = function (e) {
+          console.log("WebSocket connected in sensor worker");
+        };
+
+        socket.onerror = function (e) {
+          console.log("WebSocket error in sensor worker:", e);
+        };
+
+      socket.onmessage = function (event) {
+      let message = JSON.parse(event.data);
+      let accelData = message.values; // {X, Y, Z} values
+      let timestamp = message.timestamp;
+
+      if (starttime === 0) {
+        starttime = Date.now();
+      }
+      // Generate a timestamp based on elapsed time
+      let elapsedTime = (Date.now() - starttime) / 1000; // Convert to seconds
+
+        let workerresponse = { 
+          timestamp: elapsedTime, 
+          x: accelData[0], 
+          y: accelData[1], 
+          z: accelData[2] 
+        };
         postMessage(workerresponse);
-      };
+        };
+      } else if (e.data.type === "stop") {
+        if (socket) {
+          socket.close();
+          console.log("WebSocket closed in sensor worker");
+        }
+      }
     };
   `;
-  
-  // Create a blob URL from the worker code
-  const sensorWorkerBlob = new Blob([sensorWorkerCode], { type: "application/javascript" });
-  const sensorWorkerUrl = URL.createObjectURL(sensorWorkerBlob);
-  
-  // Create the worker
-  const sensorWorker = new Worker(sensorWorkerUrl);
-  sensorWorker.postMessage("Start");
-  
 
-    // shittyly calculated averages:
-    // { time: 1.261, x: 0.0375, y: 0.0177, z: 9.864 }
-    function is_shaking(x, y, z) {
-      let thresholds = [0.0375, 0.0177, 9.864];
-      return x > thresholds[0] || y > thresholds[1] || z > thresholds[2];
-    }
+// Create a blob URL from the worker code
+const sensorWorkerBlob = new Blob([sensorWorkerCode], {
+  type: "application/javascript",
+});
+const sensorWorkerUrl = URL.createObjectURL(sensorWorkerBlob);
 
-  // Handle messages from the worker
-  sensorWorker.onmessage = function (e) {
-    let timestamp = e.data.timestamp;
-    let x = e.data.x;
-    let y = e.data.y;
-    let z = e.data.z;
-  
-    if (is_shaking(x, y, z)) {
-      $("#shaking").html("Shaking");
-      $("#shaking").removeClass("normal");
-      $("#shaking").addClass("shaking");
+// Create the worker
+const sensorWorker = new Worker(sensorWorkerUrl);
 
-    } else {
-      $("#shaking").html("Not Shaking");
-      $("#shaking").removeClass("shaking");
-      $("#shaking").addClass("normal");
-    }
-    
-    // Append the new data to the buffer (timestamp, x, y, z)
-    dataBuffer.push([timestamp, x, y, z]);
+// Function to start the worker with the WebSocket URL
+function startSensorWorker(url) {
+  sensorWorker.postMessage({ type: "start", url: url });
+}
 
-    // Buffer out old data from IRT graph, but keep it stored in permabuffer
-    averages = null
-    if (dataBuffer.length > 100) {
+// Function to stop the worker
+function stopWorker() {
+  sensorWorker.postMessage({ type: "stop" });
+}
 
-      dataBuffer.shift();
-    }
-  
-    }
-    // Update the Dygraph with the new data
+document.addEventListener("DOMContentLoaded", function () {
+  // Attach the event handler after the DOM is fully loaded
+  document
+    .getElementById("wifi-form")
+    .addEventListener("submit", function (event) {
+      event.preventDefault(); // Prevent the default form submission behavior
 
-  function toggleGraph(graph, enable){
-     if (enable) graph.updateOptions({ file: dataBuffer });
-     else graph.updateOptions({ file: null });
-  } 
-
-  function ExportGraph() {
-
-    $.ajax({
-        type: "POST",
-        url: "http://localhost:5000/savegraph",
-        contentType: "application/json",  // Set the content type to JSON
-        data: JSON.stringify({ data: points }),  // Serialize the data to JSON
-        success: function (response) {
-            console.log(response);
-        },
-        error: function (xhr, status, error) {
-            console.error("Error during export:", error);
-        }
+      // Get the value from the input field
+      let ip = document.getElementById("wifi-text").value;
+      // Call your function with the IP
+      startSensorWorker(ip);
     });
+});
+
+// shittyly calculated averages:
+// { time: 1.261, x: 0.0375, y: 0.0177, z: 9.864 }
+function is_shaking(x, y, z) {
+  let thresholds = [0.0375, 0.0177, 9.864];
+  return x > thresholds[0] || y > thresholds[1] || z > thresholds[2];
+}
+
+let plantGraphEnabled = true;
+let angleGraphEnabled = true;
+
+// Handle messages from the worker
+sensorWorker.onmessage = function (e) {
+  let timestamp = e.data.timestamp;
+  let x = e.data.x;
+  let y = e.data.y;
+  let z = e.data.z;
+
+  if (is_shaking(x, y, z)) {
+    $("#shaking").html("Shaking");
+    $("#shaking").removeClass("normal");
+    $("#shaking").addClass("shaking");
+  } else {
+    $("#shaking").html("Not Shaking");
+    $("#shaking").removeClass("shaking");
+    $("#shaking").addClass("normal");
+  }
+
+  // Append the new data to the buffer (timestamp, x, y, z)
+  dataBuffer.push([timestamp, x, y, z]);
+  permabuffer.push([timestamp, x, y, z]);
+
+  // Buffer out old data from IRT graph, but keep it stored in permabuffer
+  averages = null;
+  if (dataBuffer.length > 100) {
+    dataBuffer.shift();
+  }
+
+  // Update only if the graph is enabled
+  if (plantGraphEnabled) {
+    plantGraph.updateOptions({ file: dataBuffer });
+  }
+  if (angleGraphEnabled) {
+    angleGraph.updateOptions({ file: dataBuffer });
+  }
+};
+// Update the Dygraph with the new data
+
+// Toggling graph enable/disable
+function toggleGraph(graph, enable) {
+  if (graph === plantGraph) {
+    plantGraphEnabled = enable;
+  } else if (graph === angleGraph) {
+    angleGraphEnabled = enable;
+  }
+}
+
+function ExportGraph() {
+  $.ajax({
+    type: "POST",
+    url: "http://localhost:5000/savegraph",
+    contentType: "application/json", // Set the content type to JSON
+    data: JSON.stringify({ data: points }), // Serialize the data to JSON
+    success: function (response) {
+      console.log(response);
+    },
+    error: function (xhr, status, error) {
+      console.error("Error during export:", error);
+    },
+  });
 }

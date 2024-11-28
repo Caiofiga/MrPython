@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Slingshot with Collision Detection</title>
+    <title>Estilingue</title>
     <link rel="stylesheet" href="../static/css/estilingue.css" />
     <link rel="stylesheet" href="../static/css/stars.css" />
 
@@ -13,7 +13,7 @@
     />
   </head>
   <body
-    style="background-image: url('{{ url_for('static', filename='img/bg.svg') }}')"
+    style="background-image: url('{{ url_for('static', filename='img/praia.svg') }}')"
   >
     <div id="video_feed">
       <button id="captureButton" class="btn btn-info" onclick="ToggleCamera()">
@@ -25,25 +25,24 @@
     </div>
 
     <div id="startScreen">
-      <h1>Welcome to Slingshot Game</h1>
-      <p>Instructions:</p>
+      <h1>Bem Vindo ao Jogo do Estilingue!</h1>
+      <p>Instruções para jogar:</p>
       <ul>
-        <li>Drag the slingshot back to aim.</li>
-        <li>Release to fire the projectile.</li>
-        <li>Hit targets to score points.</li>
+        <li>Arraste a bolinha do estilingue para o ponto vermelho</li>
+        <li>Permaneça no local por 3 segundos para ser disparado</li>
+        <li>Quando a bolinha for disparada irá atingir um alvo</li>
       </ul>
-      <button id="startButton" class="btn btn-primary">Start Game</button>
+      <button id="startButton" class="btn btn-primary">Comece a jogar</button>
     </div>
 
-    <div id="gameScreen">
-      <canvas id="gameCanvas" width="1920" height="1080"></canvas>
-      <img
-        id="collisionGif"
-        src="../static/img/kaboom-boom.gif"
-        width="100"
-        height="100"
-      />
 
+    <div id="gameScreen">
+      <button id="endButton" class="btn btn-danger">Finalizar Jogo</button>
+      
+      
+
+      <canvas id="gameCanvas" width="1920px" height="1080px"></canvas>
+  
       <!-- Victory Modal -->
       <div
         class="modal fade"
